@@ -8,6 +8,7 @@ c = []
 cBloqueados = []
 cListos = []
 cFinalizados = []
+cSuspendidos = []
 
 class Ventana:
 
@@ -205,7 +206,12 @@ class Ventana:
         self.textContador = StringVar()
         self.textContador.set("Contador:")
         self.contadorLabel = Label(self.wind, textvariable = self.textContador)
-        self.contadorLabel.grid(row = 8, column = 0, sticky = W, padx = 10)  
+        self.contadorLabel.grid(row = 8, column = 0, sticky = W, padx = 10)
+
+        self.textProcesosSuspendidos = StringVar()
+        self.textProcesosSuspendidos.set("Id siguiente suspendido:   Tamaño: ")
+        self.procesosSuspendidosLabel = Label(self.wind, textvariable = self.textProcesosSuspendidos)
+        self.procesosSuspendidosLabel.grid(row = 8, column = 2, sticky = W, padx = 10, columnspan=2)  
 
 #############################################################################################################
 
@@ -281,8 +287,6 @@ class Ventana:
                     self.limpiarTablaPaginacion()
                     self.insertarTablaPaginacion()
                 
-
-
     def teclaPulsadaB(self, event):
 
         if self.pausado != True:
@@ -294,7 +298,63 @@ class Ventana:
                 fila.TRetorno = self.contador - fila.TLlegada
                 fila.TEspera = fila.TRetorno - fila.TServicio
             self.ventanaBCP()     
-            
+
+    def teclaPulsadaS(self, event):
+        
+        if self.pausado != True:
+            if len(cBloqueados) > 0:
+                self.pruebaLabel["text"] = "Proceso suspendido"
+
+                aux = cBloqueados[0]
+                aux.TTB = 0
+                self.marcosDisponibles += aux.paginas
+                cSuspendidos.append(aux)
+                cBloqueados.pop(0)
+                registros = self.tabla4.get_children()
+                try:
+                    self.tabla4.delete(registros[0])
+                except:
+                    pass
+
+                while self.marcosDisponibles > 0 and len(c) > 0:
+                    if self.marcosDisponibles - c[0].paginas >= 0:
+                        c[0].TLlegada = self.contador
+                        cListos.append(c[0])
+                        self.marcosDisponibles -= c[0].paginas
+                        c.pop(0)
+                    else:
+                        break
+
+                self.limpiarTabla()
+                self.insertarTabla()
+                self.limpiarTablaPaginacion()
+                self.insertarTablaPaginacion()
+                self.archivoSuspendidos()
+            else:
+                self.pruebaLabel["text"] = "Se requiere proceso bloquedo"
+
+    def teclaPulsadaR(self, event):
+        
+        if self.pausado != True:
+            if len(cSuspendidos) > 0:
+                
+                aux = cSuspendidos[0]
+                if self.marcosDisponibles > 0 and len(cSuspendidos) > 0:
+                    if self.marcosDisponibles - aux.paginas >= 0:
+                        cBloqueados.append(aux)
+                        self.marcosDisponibles -= aux.paginas
+                        cSuspendidos.pop(0)
+                        self.pruebaLabel["text"] = "Proceso recuperado"
+                        self.limpiarTablaPaginacion()
+                        self.insertarTablaPaginacion()
+                        self.limpiarTablaBloqueados()
+                        self.tabla4.insert("", END, text = aux.id, values = (aux.TTB))
+                        self.archivoSuspendidos()
+                    else:
+                        self.pruebaLabel["text"] = "No hay espacio para recuperar proceso"
+                 
+            else:
+                self.pruebaLabel["text"] = "Se requiere proceso suspendido"
         
 #############################################################################################################
 
@@ -403,6 +463,8 @@ class Ventana:
         self.wind.bind('<N>', self.teclaPulsadaN)
         self.wind.bind('<B>', self.teclaPulsadaB)
         self.wind.bind('<A>', self.teclaPulsadaP)
+        self.wind.bind('<S>', self.teclaPulsadaS)
+        self.wind.bind('<R>', self.teclaPulsadaR)
 
         if self.pausado == False:
 
@@ -421,6 +483,8 @@ class Ventana:
                     fila.operando2 = ""
                     fila.TME = 0
                     fila.TR = 0
+                    fila.paginas = 0
+                    fila.tam = 0
 
                 try:
                     registros1 = self.tabla.get_children()
@@ -529,6 +593,8 @@ class Ventana:
                         self.tabla4.insert("", END, text = bloqueado.id, values = (bloqueado.TTB))
                         registros = self.tabla4.get_children()
                         self.tabla4.delete(registros[0])
+                        if len(cListos) <= 1:
+                            self.quantumContador = self.quantum
                         
                     else:
                         self.tabla4.insert("", END, text = bloqueado.id, values = (bloqueado.TTB))
@@ -545,6 +611,11 @@ class Ventana:
                     self.textProcesosNuevos.set("Procesos nuevos: " + str(len(c)) + "  Id siguiente: " + str(c[0].id) + "  Tamaño: " + str(c[0].tam))
                 except:
                      self.textProcesosNuevos.set("Procesos nuevos: " + str(len(c)) + "  Id siguiente:   Tamaño: ")
+                try:
+                    self.textProcesosSuspendidos.set("Id siguiente suspendido: " + str(cSuspendidos[0].id) + " Tamaño: " + str(cSuspendidos[0].tam))
+                except:
+                     self.textProcesosSuspendidos.set("Id siguiente suspendido:   Tamaño: ")
+                
                 for bloqueado in cBloqueados:
                     bloqueado.TTB += 1
                 self.wind.after(1000, self.insertarFrameProceso)
@@ -840,6 +911,13 @@ class Ventana:
             self.tablaBCP.insert("", END, text = fila.id, values = ("Finalizado", str(fila.operando1) + fila.op + str(fila.operando2) + " =", fila.resultado, fila.TME, fila.TT, fila.TR, "-", fila.TLlegada, fila.TFinalizacion, fila.TRetorno, fila.TRespuesta, fila.TEspera, fila.TServicio))
 
         self.top.mainloop()
+
+    def archivoSuspendidos(self):
+        archivo = open("suspendidos.txt", "w")
+        for i in cSuspendidos:
+            linea = "Id: " + str(i.id) + " Tamaño: " + str(i.tam) + " Operacion: " + str(i.operando1) + str(i.op) + str(i.operando2) + " TME: " + str(i.TME) + " TT: " + str(i.TT) + "\n"
+            archivo.write(linea)
+        archivo.close()
 
 if __name__ == '__main__':
 
